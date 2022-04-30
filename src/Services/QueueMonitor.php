@@ -101,6 +101,33 @@ class QueueMonitor
     }
 
     /**
+     * Pending Queue Monitoring for Job.
+     *
+     * @param \Illuminate\Contracts\Queue\Job $job
+     *
+     * @return void
+     */
+    protected static function jobQueued(JobContract $job): void
+    {
+        if ( ! self::shouldBeMonitored($job)) {
+            return;
+        }
+
+        $now = Carbon::now();
+
+        $model = self::getModel();
+
+        $model::query()->create([
+            'job_id' => self::getJobId($job),
+            'name' => $job->resolveName(),
+            'queue' => $job->getQueue(),
+            'queued_at' => $now,
+            'queued_at_exact' => $now->format(self::TIMESTAMP_EXACT_FORMAT),
+            'attempt' => $job->attempts(),
+        ]);
+    }
+
+    /**
      * Start Queue Monitoring for Job.
      *
      * @param \Illuminate\Contracts\Queue\Job $job
@@ -117,14 +144,17 @@ class QueueMonitor
 
         $model = self::getModel();
 
-        $model::query()->create([
-            'job_id' => self::getJobId($job),
-            'name' => $job->resolveName(),
-            'queue' => $job->getQueue(),
-            'started_at' => $now,
-            'started_at_exact' => $now->format(self::TIMESTAMP_EXACT_FORMAT),
-            'attempt' => $job->attempts(),
-        ]);
+        $model::query()
+            ->orderByDesc('queued_at')
+            ->updateOrCreate([
+                'job_id' => self::getJobId($job),
+                'attempt'=> $job->attempts()
+            ], [
+                'name' => $job->resolveName(),
+                'queue' => $job->getQueue(),
+                'started_at' => $now,
+                'started_at_exact' => $now->format(self::TIMESTAMP_EXACT_FORMAT)
+            ]);
     }
 
     /**
